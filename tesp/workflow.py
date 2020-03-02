@@ -5,21 +5,16 @@ A temporary workflow for processing S2 data into an ARD package.
 """
 
 from os.path import join as pjoin, basename
-from posixpath import join as ppjoin
 import shutil
 import re
-import logging
 import traceback
-from urllib.parse import urlencode
-
-from structlog import wrap_logger
-from structlog.processors import JSONRenderer
 
 import luigi
 from luigi.local_target import LocalFileSystem
 
 from wagl.acquisition import acquisitions
 from wagl.singlefile_workflow import DataStandardisation
+from wagl.logs import TASK_LOGGER
 from tesp.package import package, PATTERN2, ARD
 from tesp.constants import ProductPackage
 
@@ -27,21 +22,25 @@ from eugl.fmask import fmask
 from eugl.gqa import GQATask
 
 
-ERROR_LOGGER = wrap_logger(logging.getLogger('errors'),
-                           processors=[JSONRenderer(indent=1, sort_keys=True)])
-STATUS_LOGGER = wrap_logger(logging.getLogger('status'),
-                            processors=[JSONRenderer(indent=1, sort_keys=True)])
-INTERFACE_LOGGER = logging.getLogger('luigi-interface')
-
-
 @luigi.Task.event_handler(luigi.Event.FAILURE)
 def on_failure(task, exception):
     """Capture any Task Failure here."""
-    ERROR_LOGGER.error(task=task.get_task_family(),
-                       params=task.to_str_params(),
-                       level1=getattr(task, 'level1', ''),
-                       exception=exception.__str__(),
-                       traceback=traceback.format_exc().splitlines())
+    TASK_LOGGER.exception(task=task.get_task_family(),
+                          params=task.to_str_params(),
+                          level1=getattr(task, 'level1', ''),
+                          stack_info=True,
+                          status='failure',
+                          exception=exception.__str__(),
+                          traceback=traceback.format_exc().splitlines())
+
+
+@luigi.Task.event_handler(luigi.Event.SUCCESS)
+def on_success(task):
+    """Capture any Task Success here."""
+    TASK_LOGGER.info(task=task.get_task_family(),
+                     params=task.to_str_params(),
+                     level1=getattr(task, 'level1', ''),
+                     status='success')
 
 
 class WorkDir(luigi.Task):
